@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Notas por mão — piano</title>
+<style>
+  :root { --azul:#1B6BE8; --amarelo:#F5E400; --fundo:#0C0D10; --painel:#16181D; --borda:#262A33; --texto:#E8EAF0; --fraco:#8C93A3; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--fundo); color:var(--texto); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .tudo { display:flex; gap:22px; padding:22px; align-items:flex-start; justify-content:center; flex-wrap:wrap; }
+  .palco { position:relative; background:#000; border-radius:14px; overflow:hidden; box-shadow:0 10px 40px #0008; }
+  canvas { display:block; width:405px; height:720px; }
+  .lado { width:340px; display:flex; flex-direction:column; gap:16px; }
+  .caixa { background:var(--painel); border:1px solid var(--borda); border-radius:12px; padding:16px; }
+  h1 { font-size:19px; margin:0 0 4px; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.09em; color:var(--fraco); margin:0 0 12px; font-weight:600; }
+  .solta { color:var(--fraco); font-size:13px; margin:0; }
+  button { font:inherit; font-weight:600; color:var(--texto); background:#22262E; border:1px solid var(--borda); border-radius:9px; padding:9px 14px; cursor:pointer; }
+  button:hover:not(:disabled) { background:#2C313B; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.principal { background:var(--azul); border-color:var(--azul); color:#fff; }
+  .linha { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  label.arquivo { display:block; border:2px dashed var(--borda); border-radius:10px; padding:20px; text-align:center; cursor:pointer; color:var(--fraco); }
+  label.arquivo:hover, label.arquivo.sobre { border-color:var(--azul); color:var(--texto); }
+  input[type=file] { display:none; }
+  input[type=range] { width:100%; accent-color:var(--azul); }
+  .campo { display:flex; justify-content:space-between; font-size:13px; color:var(--fraco); margin-bottom:5px; }
+  .campo b { color:var(--texto); font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:3px 0; border-bottom:1px solid #1E222A; }
+  td:last-child { text-align:right; color:var(--fraco); font-variant-numeric:tabular-nums; }
+  .pino { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:7px; vertical-align:-1px; }
+</style>
+</head>
+<body>
+<div class="tudo">
+  <div class="palco"><canvas id="tela" width="1080" height="1920"></canvas></div>
+
+  <div class="lado">
+    <div class="caixa">
+      <h1>Notas por mão</h1>
+      <p class="solta">Joga um MIDI ou o vídeo do Synthesia. As notas caem com o nome nelas e os retângulos mostram o que cada mão toca.</p>
+    </div>
+
+    <div class="caixa">
+      <label class="arquivo" id="alvo">
+        <input type="file" id="entrada" accept=".mid,.midi,.webm,.mp4,.mov">
+        <b>Escolher arquivo</b><br><span style="font-size:13px">MIDI ou vídeo do Synthesia — ou arrastar pra cá</span>
+      </label>
+      <p id="estado" class="solta" style="margin-top:10px;display:none"></p>
+      <input type="range" id="barra" min="0" max="1" step="0.001" value="0" style="margin-top:14px" disabled>
+      <div class="linha" style="margin-top:10px">
+        <button id="tocar" class="principal" disabled>Tocar</button>
+        <button id="passoT" disabled title="um quadro pra trás">◀</button>
+        <button id="passoF" disabled title="um quadro pra frente">▶</button>
+        <button id="voltar" disabled>Início</button>
+        <span id="relogio" style="margin-left:auto;color:var(--fraco);font-variant-numeric:tabular-nums">0:00</span>
+      </div>
+      <p class="solta" style="margin-top:8px;font-size:12px">Barra de espaço toca e pausa. As setas ◀ ▶ andam de quadro em quadro.</p>
+    </div>
+
+    <div class="caixa" id="ajustes" style="display:none">
+      <h2>Ajustes</h2>
+      <div class="campo"><span>Como a direita aparece</span></div>
+      <div class="linha" style="margin-bottom:16px">
+        <button id="modo1" class="principal">1 — nota a nota</button>
+        <button id="modo2">2 — grupo inteiro</button>
+      </div>
+      <div class="campo"><span>Divisão das mãos</span><b id="rotSplit"></b></div>
+      <input type="range" id="split" min="36" max="84" step="1">
+      <div class="campo" style="margin-top:14px"><span>Notas na linha da direita</span><b id="rotMax">7</b></div>
+      <input type="range" id="max" min="1" max="10" step="1" value="7">
+      <div class="linha" style="margin-top:10px">
+        <button id="corte">Cortar na virada da frase: sim</button>
+      </div>
+      <div class="campo" style="margin-top:14px"><span>Velocidade</span><b id="rotVel">1,0x</b></div>
+      <input type="range" id="vel" min="0.25" max="1.5" step="0.05" value="1">
+      <div class="campo" style="margin-top:14px"><span>Queda visível</span><b id="rotQueda">3,0s</b></div>
+      <input type="range" id="queda" min="1" max="6" step="0.5" value="3">
+      <div class="linha" style="margin-top:14px">
+        <button id="som">Som: ligado</button>
+      </div>
+    </div>
+
+    <div class="caixa" id="resumo" style="display:none">
+      <h2>Resumo</h2>
+      <table id="tabela"></table>
+      <div class="linha" style="margin-top:14px">
+        <button id="baixarE">SRT esquerda</button>
+        <button id="baixarD">SRT direita</button>
+        <button id="baixarC">CSV</button>
+      </div>
+      <div class="linha" style="margin-top:10px">
+        <button id="baixarV" class="principal">Baixar vídeo</button>
+        <span id="avisoV" class="solta" style="font-size:12px"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------------- MIDI --- */
+function lerMidi(buf) {
+  const v = new DataView(buf); let p = 0;
+  const u32 = () => { const x = v.getUint32(p); p += 4; return x; };
+  const u16 = () => { const x = v.getUint16(p); p += 2; return x; };
+  const texto = n => { let s = ''; for (let i = 0; i < n; i++) s += String.fromCharCode(v.getUint8(p + i)); p += n; return s; };
+  const varlen = () => { let x = 0, b; do { b = v.getUint8(p++); x = (x << 7) | (b & 0x7f); } while (b & 0x80); return x; };
+
+  if (texto(4) !== 'MThd') throw new Error('não parece um arquivo MIDI');
+  u32(); u16();
+  const nTrilhas = u16(), divisao = u16();
+  if (divisao & 0x8000) throw new Error('MIDI em SMPTE não é suportado');
+
+  const brutos = [], tempos = [];
+  for (let t = 0; t < nTrilhas; t++) {
+    if (texto(4) !== 'MTrk') break;
+    const tamanho = u32();       // le o tamanho ANTES de somar: u32() move o p
+    const limite = p + tamanho;
+    let tick = 0, corrente = null;
+    while (p < limite) {
+      tick += varlen();
+      let st = v.getUint8(p);
+      if (st & 0x80) { p++; corrente = st; } else st = corrente;
+      if (st === 0xFF) {
+        const tipo = v.getUint8(p++); const n = varlen();
+        if (tipo === 0x51) { let us = 0; for (let i = 0; i < n; i++) us = (us << 8) | v.getUint8(p + i); tempos.push({tick, us}); }
+        p += n;
+      } else if (st === 0xF0 || st === 0xF7) {
+        p += varlen();
+      } else {
+        const alto = st & 0xF0;
+        const d1 = v.getUint8(p++);
+        const d2 = (alto === 0xC0 || alto === 0xD0) ? 0 : v.getUint8(p++);
+        if (alto === 0x90 && d2 > 0) brutos.push({tick, nota: d1, tipo: 'on', trilha: t});
+        else if (alto === 0x80 || (alto === 0x90 && d2 === 0)) brutos.push({tick, nota: d1, tipo: 'off', trilha: t});
+      }
+    }
+    p = limite;
+  }
+
+  // ticks -> segundos, respeitando as trocas de andamento
+  tempos.sort((a, b) => a.tick - b.tick);
+  if (!tempos.length || tempos[0].tick > 0) tempos.unshift({tick: 0, us: 500000});
+  const seg = tick => {
+    let s = 0;
+    for (let i = 0; i < tempos.length; i++) {
+      const ini = tempos[i].tick, fim = (i + 1 < tempos.length) ? Math.min(tempos[i + 1].tick, tick) : tick;
+      if (tick <= ini) break;
+      s += (fim - ini) * (tempos[i].us / 1e6) / divisao;
+      if (fim === tick) break;
+    }
+    return s;
+  };
+
+  brutos.sort((a, b) => a.tick - b.tick || (a.tipo === 'off' ? -1 : 1));
+  const abertas = new Map(), notas = [];
+  for (const e of brutos) {
+    const ch = e.nota + ':' + e.trilha;
+    if (e.tipo === 'on') { if (!abertas.has(ch)) abertas.set(ch, e.tick); }
+    else if (abertas.has(ch)) { notas.push({midi: e.nota, ini: seg(abertas.get(ch)), fim: seg(e.tick), trilha: e.trilha}); abertas.delete(ch); }
+  }
+  const ultimo = brutos.length ? brutos[brutos.length - 1].tick : 0;
+  for (const [ch, tk] of abertas) notas.push({midi: +ch.split(':')[0], ini: seg(tk), fim: seg(ultimo), trilha: +ch.split(':')[1]});
+  notas.sort((a, b) => a.ini - b.ini || a.midi - b.midi);
+  return notas.filter(n => n.fim - n.ini > 0.01);
+}
+
+/* ------------------------------------------------------- vídeo Synthesia ---
+   O Synthesia é render de computador: o teclado fica sempre no mesmo pixel e a
+   tecla acende em cor sólida. Dá pra ler as notas direto da imagem, sem MIDI e
+   sem passar por áudio (que erra).
+
+   Lê o TECLADO, não as barras caindo: na área das barras a barra larga de uma
+   tecla branca cobre a coluna da preta vizinha e inventa sustenido.           */
+
+const BRANCAS_NA_OITAVA = [0, 2, 4, 5, 7, 9, 11];   // C D E F G A B
+const TEM_PRETA_DEPOIS  = [1, 1, 0, 1, 1, 1, 0];    // C|D D|E E|F F|G G|A A|B B|C
+
+/** A fileira mais vermelha da tela é a linha de impacto do Synthesia. */
+function acharLinhaImpacto(ctx, W, H) {
+  let melhorY = -1, melhorR = -1;
+  for (let y = Math.floor(H * 0.3); y < H - 10; y += 2) {
+    const d = ctx.getImageData(0, y, W, 1).data; let s = 0;
+    for (let x = 0; x < W; x += 8) s += d[x * 4] - (d[x * 4 + 1] + d[x * 4 + 2]) / 2;
+    if (s > melhorR) { melhorR = s; melhorY = y; }
+  }
+  if (melhorY < 0) throw new Error('não achei a linha de impacto — esse vídeo é do Synthesia?');
+  return melhorY;
+}
+
+/** Quão bom é este quadro pra medir o teclado: claro e sem tecla acesa. */
+function notaDoQuadro(ctx, W, yBranca) {
+  const d = ctx.getImageData(0, yBranca, W, 1).data;
+  let claro = 0, colorido = 0;
+  for (let x = 0; x < W; x++) {
+    const r = d[x * 4], g = d[x * 4 + 1], b = d[x * 4 + 2];
+    if ((r + g + b) / 3 > 200) claro++;
+    if (Math.max(r, g, b) - Math.min(r, g, b) > 25) colorido++;
+  }
+  return claro / W - (colorido / W) * 3;   // tecla acesa atrapalha, então pesa contra
+}
+
+/** Acha, no frame, onde está o teclado e qual tecla é qual. */
+function medirGeometria(ctx, W, H, linhaImpacto) {
+  const linha = y => ctx.getImageData(0, y, W, 1).data;
+  const lum = (d, x) => (d[x * 4] + d[x * 4 + 1] + d[x * 4 + 2]) / 3;
+
+  const melhorY = linhaImpacto !== undefined ? linhaImpacto : acharLinhaImpacto(ctx, W, H);
+  const altura = H - melhorY;
+  const yBranca = Math.round(melhorY + altura * 0.92);   // abaixo das pretas
+  const yPreta  = Math.round(melhorY + altura * 0.38);
+
+  // 2. separadores entre as teclas brancas
+  const dB = linha(yBranca);
+  const escuro = [];
+  for (let x = 0; x < W; x++) escuro.push(lum(dB, x) < 170);
+  const bordas = [];
+  for (let x = 1; x < W; x++) {
+    if (escuro[x] && !escuro[x - 1]) {
+      let f = x; while (f < W && escuro[f]) f++;
+      if (f - x <= 10) bordas.push((x + f - 1) / 2);
+      x = f;
+    }
+  }
+  if (bordas.length < 6) throw new Error('não achei as teclas do teclado');
+
+  // Ajusta uma grade regular em vez de confiar em cada separador: se uma tecla
+  // estiver acesa a borda dela some, e aí os vãos saem irregulares.
+  const difs = [];
+  for (let i = 1; i < bordas.length; i++) difs.push(bordas[i] - bordas[i - 1]);
+  difs.sort((a, b) => a - b);
+  const unidade = difs[Math.floor(difs.length * 0.25)];   // vão simples típico
+  let soma = 0, peso = 0;
+  for (const d of difs) {
+    const k = Math.round(d / unidade);
+    if (k >= 1 && k <= 6 && Math.abs(d / k - unidade) < unidade * 0.2) { soma += d; peso += k; }
+  }
+  const larguraBranca = peso ? soma / peso : unidade;
+  // fase: média circular do resto das bordas
+  let sx = 0, sy = 0;
+  for (const b of bordas) { const a = 2 * Math.PI * (b % larguraBranca) / larguraBranca; sx += Math.cos(a); sy += Math.sin(a); }
+  let fase0 = Math.atan2(sy, sx) / (2 * Math.PI) * larguraBranca;
+  if (fase0 < 0) fase0 += larguraBranca;
+
+  const centros = [];
+  for (let c = fase0 + larguraBranca / 2; c < W; c += larguraBranca) centros.push(c);
+  while (centros.length && centros[0] - larguraBranca > 0) centros.unshift(centros[0] - larguraBranca);
+  if (centros.length < 6) throw new Error('não consegui medir as teclas');
+
+  // 3. teclas pretas
+  const dP = linha(yPreta);
+  const pretas = [];
+  for (let x = 1; x < W; x++) {
+    if (lum(dP, x) < 90 && lum(dP, x - 1) >= 90) {
+      let f = x; while (f < W && lum(dP, f) < 90) f++;
+      if (f - x > larguraBranca * 0.3) pretas.push((x + f - 1) / 2);
+      x = f;
+    }
+  }
+
+  // 4. em quais vãos existe tecla preta
+  const temPreta = [];
+  for (let i = 0; i < centros.length - 1; i++) {
+    const meio = (centros[i] + centros[i + 1]) / 2;
+    temPreta.push(pretas.some(p => Math.abs(p - meio) < larguraBranca * 0.45));
+  }
+
+  // 5. o padrão de vãos vazios (mi-fá e si-dó) diz qual branca é o dó
+  let fase = 0, melhorAcerto = -1;
+  for (let f = 0; f < 7; f++) {
+    let acerto = 0;
+    for (let i = 0; i < temPreta.length; i++) {
+      if (temPreta[i] === !!TEM_PRETA_DEPOIS[(f + i) % 7]) acerto++;
+    }
+    if (acerto > melhorAcerto) { melhorAcerto = acerto; fase = f; }
+  }
+  const confianca = temPreta.length ? melhorAcerto / temPreta.length : 0;
+  if (confianca < 0.85) throw new Error('não reconheci o desenho do teclado (tema diferente?)');
+
+  // 6. monta a lista de teclas. A oitava absoluta não dá pra saber sem ler os
+  //    rótulos, então centraliza no dó central — só afeta o número, não o nome.
+  const teclas = [];
+  for (let i = 0; i < centros.length; i++) {
+    const grau = (fase + i) % 7;
+    teclas.push({x: Math.round(centros[i]), y: yBranca, preta: false, grau, indice: i});
+    if (TEM_PRETA_DEPOIS[grau] && i < centros.length - 1) {
+      const meio = (centros[i] + centros[i + 1]) / 2;
+      const p = pretas.find(q => Math.abs(q - meio) < larguraBranca * 0.45);
+      if (p !== undefined) teclas.push({x: Math.round(p), y: yPreta, preta: true, grau, indice: i, sustenido: true});
+    }
+  }
+  // dó mais próximo do meio vira dó4
+  const meioTela = centros.length / 2;
+  let refC = 0, dist = 1e9;
+  for (let i = 0; i < centros.length; i++) {
+    if ((fase + i) % 7 === 0 && Math.abs(i - meioTela) < dist) { dist = Math.abs(i - meioTela); refC = i; }
+  }
+  for (const k of teclas) {
+    const passo = k.indice - refC;
+    const oit = Math.floor(passo / 7), grau = ((passo % 7) + 7) % 7;
+    k.midi = 60 + oit * 12 + BRANCAS_NA_OITAVA[grau] + (k.sustenido ? 1 : 0);
+  }
+  return {teclas, yBranca, yPreta, larguraBranca, confianca};
+}
+
+const esperarBusca = (v, t) => new Promise(ok => { v.onseeked = ok; v.currentTime = t; });
+
+/** Varre o vídeo inteiro e devolve as notas. */
+async function lerVideoSynthesia(file, aoProgresso) {
+  const v = document.createElement('video');
+  v.src = URL.createObjectURL(file);
+  v.muted = true; v.playsInline = true; v.preload = 'auto';
+  // precisa estar na página: o navegador não entrega quadros de um vídeo que
+  // não está sendo renderizado, e aí requestVideoFrameCallback nunca dispara.
+  v.style.cssText = 'position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0.01;pointer-events:none';
+  document.body.appendChild(v);
+  const limpar = () => { v.pause(); v.remove(); URL.revokeObjectURL(v.src); };
+  try {
+    await new Promise((ok, bad) => { v.onloadedmetadata = ok; v.onerror = () => bad(new Error('não consegui abrir esse vídeo')); });
+  } catch (e) { limpar(); throw e; }
+  if (!('requestVideoFrameCallback' in v)) { limpar(); throw new Error('esse navegador não deixa ler o vídeo quadro a quadro'); }
+
+  try {
+  const W = v.videoWidth, H = v.videoHeight, dur = v.duration;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d', {willReadFrequently: true});
+
+  // Procura o quadro mais limpo pra medir o teclado: o começo costuma estar
+  // preto e no meio quase sempre tem tecla acesa, que estraga a medição.
+  await esperarBusca(v, dur * 0.5);
+  c.drawImage(v, 0, 0);
+  const linhaImpacto = acharLinhaImpacto(c, W, H);
+  const yProva = Math.round(linhaImpacto + (H - linhaImpacto) * 0.92);
+  let melhorT = dur * 0.5, melhorNota = -1e9;
+  for (let i = 1; i <= 12; i++) {
+    const t = dur * i / 13;
+    await esperarBusca(v, t);
+    c.drawImage(v, 0, 0);
+    const n = notaDoQuadro(c, W, yProva);
+    if (n > melhorNota) { melhorNota = n; melhorT = t; }
+  }
+  await esperarBusca(v, melhorT);
+  c.drawImage(v, 0, 0);
+  const geo = medirGeometria(c, W, H, linhaImpacto);
+
+  // lê o estado das teclas no quadro que está na tela agora
+  const lerTeclas = () => {
+    c.drawImage(v, 0, 0);
+    const dB = c.getImageData(0, geo.yBranca, W, 1).data;
+    const dP = c.getImageData(0, geo.yPreta, W, 1).data;
+    return geo.teclas.map(k => {
+      const d = k.preta ? dP : dB, i = k.x * 4;
+      const r = d[i], g = d[i + 1], b = d[i + 2];
+      const l = (r + g + b) / 3, sat = Math.max(r, g, b) - Math.min(r, g, b);
+      // branca solta é clara e sem cor; preta solta é escura
+      return k.preta ? l > 80 : (sat > 25 || l < 210);
+    });
+  };
+
+  const quadros = [];
+  let perdidos = 0, anterior = null, porBusca = false;
+  await esperarBusca(v, 0);
+
+  // Caminho rápido: deixa o vídeo tocar e pega cada quadro apresentado.
+  await new Promise(ok => {
+    let vivo = true;
+    const terminar = () => { if (vivo) { vivo = false; ok(); } };
+    const pegar = (agora, meta) => {
+      if (!vivo) return;
+      quadros.push(lerTeclas());
+      if (anterior !== null && meta.presentedFrames - anterior > 1) perdidos += meta.presentedFrames - anterior - 1;
+      anterior = meta.presentedFrames;
+      if (aoProgresso) aoProgresso(Math.min(1, meta.mediaTime / dur));
+      if (!v.ended) v.requestVideoFrameCallback(pegar); else terminar();
+    };
+    v.requestVideoFrameCallback(pegar);
+    v.onended = terminar;
+    v.play().catch(terminar);
+    // alguns navegadores não entregam quadro nenhum: desiste e usa o plano B
+    setTimeout(() => { if (!quadros.length) terminar(); }, 3000);
+  });
+
+  let fps;
+  if (quadros.length >= 10 && perdidos === 0) {
+    // timestamps de gravação de tela costumam vir quebrados: reconstrói o tempo
+    // pelo número de quadros, que é o que a extração em Python faz.
+    fps = quadros.length / dur;
+  } else {
+    // Plano B: anda de busca em busca. Bem mais lento, mas não depende de o
+    // navegador conseguir reproduzir o vídeo.
+    v.pause(); quadros.length = 0; porBusca = true; fps = 30;
+    const total = Math.floor(dur * fps);
+    for (let i = 0; i < total; i++) {
+      await esperarBusca(v, i / fps);
+      quadros.push(lerTeclas());
+      if (aoProgresso && i % 10 === 0) aoProgresso(i / total);
+    }
+  }
+  if (quadros.length < 10) throw new Error('não consegui ler os quadros desse vídeo');
+  const notas = [];
+  const inicio = new Array(geo.teclas.length).fill(-1);
+  for (let f = 0; f < quadros.length; f++) {
+    for (let k = 0; k < geo.teclas.length; k++) {
+      const aceso = quadros[f][k];
+      if (aceso && inicio[k] < 0) inicio[k] = f;
+      else if (!aceso && inicio[k] >= 0) {
+        notas.push({midi: geo.teclas[k].midi, ini: inicio[k] / fps, fim: f / fps, trilha: 0});
+        inicio[k] = -1;
+      }
+    }
+  }
+  for (let k = 0; k < inicio.length; k++) {
+    if (inicio[k] >= 0) notas.push({midi: geo.teclas[k].midi, ini: inicio[k] / fps, fim: quadros.length / fps, trilha: 0});
+  }
+  notas.sort((a, b) => a.ini - b.ini || a.midi - b.midi);
+  return {notas: notas.filter(n => n.fim - n.ini >= 0.05), fps, porBusca,
+          confianca: geo.confianca, teclas: geo.teclas.length};
+  } finally { limpar(); }
+}
+
+/* --------------------------------------------------------------- notas --- */
+const NOMES = ['dó','dó#','ré','ré#','mi','fá','fá#','sol','sol#','lá','lá#','si'];
+const nome = m => NOMES[((m % 12) + 12) % 12];
+const nomeOit = m => nome(m) + (Math.floor(m / 12) - 1);
+const ehPreta = m => [1,3,6,8,10].includes(((m % 12) + 12) % 12);
+
+/** Acha o maior buraco de altura no meio do teclado — costuma ser onde as mãos se separam. */
+function divisaoAutomatica(notas) {
+  const usados = [...new Set(notas.map(n => n.midi))].sort((a, b) => a - b);
+  if (usados.length < 2) return 60;
+  let melhor = 60, maior = -1;
+  for (let i = 0; i < usados.length - 1; i++) {
+    const a = usados[i], b = usados[i + 1], meio = (a + b) / 2;
+    if (meio < 45 || meio > 78) continue;
+    if (b - a > maior) { maior = b - a; melhor = Math.ceil(meio); }
+  }
+  return maior >= 3 ? melhor : 60;
+}
+
+function agrupar(notas) {
+  const gs = [];
+  for (const n of notas) {
+    const u = gs[gs.length - 1];
+    if (u && n.ini - u.ini < 0.09) { u.notas.push(n); u.fim = Math.max(u.fim, n.fim); }
+    else gs.push({ini: n.ini, fim: n.fim, notas: [n]});
+  }
+  return gs;
+}
+
+/** Monta as deixas dos dois retângulos. A direita acumula; recomeça quando o acorde da esquerda troca. */
+/** Trilhas separadas valem mais que altura: o arquivo já diz qual mão é qual. */
+let trilhaEsquerda = null;   // null = separar por altura
+
+function ehEsquerda(n) {
+  return trilhaEsquerda === null ? n.midi < divisao : n.trilha === trilhaEsquerda;
+}
+
+function detectarTrilhas(notas) {
+  const porTrilha = new Map();
+  for (const n of notas) {
+    if (!porTrilha.has(n.trilha)) porTrilha.set(n.trilha, []);
+    porTrilha.get(n.trilha).push(n.midi);
+  }
+  if (porTrilha.size !== 2) return null;
+  const medias = [...porTrilha].map(([t, ms]) => [t, ms.reduce((a, b) => a + b, 0) / ms.length]);
+  medias.sort((a, b) => a[1] - b[1]);
+  return medias[0][0];   // a trilha mais grave é a esquerda
+}
+
+function montarDeixas(notas, divisao, maximo, modo, cortarNaFrase) {
+  const esq = notas.filter(ehEsquerda), dir = notas.filter(n => !ehEsquerda(n));
+  const gE = agrupar(esq), gD = agrupar(dir);
+  const fim = notas.length ? Math.max(...notas.map(n => n.fim)) : 0;
+  // NUNCA junta nota repetida: o aluno se guia pelas teclas que estao sendo
+  // apertadas, entao dois "la" em oitavas diferentes sao dois dedos e aparecem
+  // os dois. Repeticao ao longo do tempo idem.
+  const txt = g => g.notas.slice().sort((a, b) => a.midi - b.midi).map(n => nome(n.midi)).join(', ');
+
+  const deixasE = gE.map((g, i) => ({ini: g.ini, fim: i + 1 < gE.length ? gE[i + 1].ini : fim, texto: txt(g)}));
+
+  // Fecha os grupos primeiro, e só depois decide como mostrar. Assim os dois
+  // modos concordam sempre sobre onde um grupo começa e termina.
+  const frases = gE.map(g => g.ini);
+  const grupos = []; let fraseAtual = null;
+  for (const g of gD) {
+    let fr = 0;
+    for (let i = 0; i < frases.length; i++) if (frases[i] <= g.ini + 0.05) fr = i;
+    // Fecha o grupo quando o acorde da esquerda troca (virada da frase) ou
+    // quando enche. Ao encher, ZERA — não desliza a janela: deslizar tira nota
+    // da frente e põe atrás ao mesmo tempo, e o aluno se perde.
+    const ultimo = grupos[grupos.length - 1];
+    const virouFrase = cortarNaFrase && fr !== fraseAtual;
+    if (!ultimo || virouFrase || ultimo.itens.length >= maximo) {
+      grupos.push({ini: g.ini, itens: []});
+      fraseAtual = fr;
+    }
+    grupos[grupos.length - 1].itens.push({ini: g.ini, texto: txt(g)});
+  }
+  const fimDoGrupo = i => (i + 1 < grupos.length ? grupos[i + 1].ini : fim);
+
+  let deixasD;
+  if (modo === 'grupo') {
+    // Modo 2: o grupo inteiro aparece de uma vez, na primeira nota dele, e fica
+    // até o grupo seguinte começar. O aluno vê a frase toda vindo.
+    deixasD = grupos.map((gr, i) => ({
+      ini: gr.ini, fim: fimDoGrupo(i),
+      texto: gr.itens.map(x => x.texto).join(', '),
+    }));
+  } else {
+    // Modo 1: revela nota a nota, acumulando dentro do grupo.
+    deixasD = [];
+    grupos.forEach((gr, i) => {
+      gr.itens.forEach((it, k) => {
+        deixasD.push({
+          ini: it.ini,
+          fim: k + 1 < gr.itens.length ? gr.itens[k + 1].ini : fimDoGrupo(i),
+          texto: gr.itens.slice(0, k + 1).map(x => x.texto).join(', '),
+        });
+      });
+    });
+  }
+  return {deixasE, deixasD, esq, dir, grupos};
+}
+
+const ativa = (lista, t) => { for (const d of lista) if (t >= d.ini && t < d.fim) return d; return null; };
+
+/* ---------------------------------------------------------------- palco --- */
+const tela = document.getElementById('tela'), ctx = tela.getContext('2d');
+const L = tela.width, A = tela.height;
+const Y_TECLADO = 1080, ALT_TECLA = 230, Y_LINHA = Y_TECLADO;
+const AZUL = '#2E7DF0', AZUL_ESC = '#1B6BE8', AMARELO = '#F5E400';
+
+let notas = [], deixas = null, divisao = 60, maximo = 7, queda = 3, faixa = null
+let modo = 'nota';   // 'nota' revela uma por vez | 'grupo' mostra as 5 juntas
+let cortarNaFrase = true;   // fecha o grupo quando o acorde da esquerda troca
+
+function calcularFaixa() {
+  if (!notas.length) { faixa = {de: 48, ate: 84}; return; }
+  let lo = Math.min(...notas.map(n => n.midi)) - 2, hi = Math.max(...notas.map(n => n.midi)) + 2;
+  while (ehPreta(lo)) lo--;
+  while (ehPreta(hi)) hi++;
+  faixa = {de: lo, ate: hi};
+}
+
+const brancasAte = m => { let c = 0; for (let i = faixa.de; i < m; i++) if (!ehPreta(i)) c++; return c; };
+function totalBrancas() { let c = 0; for (let i = faixa.de; i <= faixa.ate; i++) if (!ehPreta(i)) c++; return c; }
+
+/** Devolve {x, largura} da coluna de uma nota. */
+function coluna(m) {
+  const lb = L / totalBrancas();
+  if (!ehPreta(m)) return {x: brancasAte(m) * lb, w: lb};
+  const lp = lb * 0.62;
+  return {x: brancasAte(m) * lb - lp / 2, w: lp};
+}
+
+function retangulo(x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath(); ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr); ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr); ctx.arcTo(x, y, x + w, y, rr); ctx.closePath();
+}
+
+function pilula(texto, y, fundo, cor, tamanho) {
+  const MARGEM = 40, PAD = 92;
+  const fonte = t => `italic 800 ${t}px Montserrat, "Segoe UI", -apple-system, sans-serif`;
+  // encolhe a fonte se a frase for comprida demais pra caber na tela
+  let t = tamanho;
+  ctx.font = fonte(t);
+  while (t > 26 && ctx.measureText(texto).width + PAD > L - MARGEM) {
+    t -= 2;
+    ctx.font = fonte(t);
+  }
+  const larg = ctx.measureText(texto).width + PAD;
+  const alt = tamanho + 36, x = (L - larg) / 2;
+  ctx.fillStyle = fundo; retangulo(x, y, larg, alt, 18); ctx.fill();
+  ctx.fillStyle = cor; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(texto, L / 2, y + alt / 2 + 2);
+}
+
+function rotulo(texto, x, y, fundo, cor) {
+  ctx.font = 'italic 800 46px Montserrat, "Segoe UI", -apple-system, sans-serif';
+  const larg = ctx.measureText(texto).width + 76, alt = 78;
+  ctx.fillStyle = fundo; retangulo(x, y, larg, alt, 15); ctx.fill();
+  ctx.fillStyle = cor; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(texto, x + larg / 2, y + alt / 2 + 2);
+  return larg;
+}
+
+function desenhar(t) {
+  ctx.fillStyle = '#0B0C0F'; ctx.fillRect(0, 0, L, A);
+  if (!notas.length) {
+    ctx.fillStyle = '#4A505E'; ctx.font = '600 44px "Segoe UI", -apple-system, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Escolhe um arquivo MIDI', L / 2, A / 2);
+    return;
+  }
+
+  const pxs = Y_TECLADO / queda;  // pixels por segundo de queda
+
+  // linhas de oitava, pra dar referência de altura
+  ctx.strokeStyle = '#1A1D24'; ctx.lineWidth = 2;
+  for (let m = faixa.de; m <= faixa.ate; m++) {
+    if (m % 12 !== 0) continue;
+    const c = coluna(m); ctx.beginPath(); ctx.moveTo(c.x, 0); ctx.lineTo(c.x, Y_TECLADO); ctx.stroke();
+  }
+
+  // barras caindo
+  for (const n of notas) {
+    if (n.fim < t || n.ini > t + queda) continue;
+    const c = coluna(n.midi);
+    const y0 = Y_LINHA - (n.fim - t) * pxs, y1 = Y_LINHA - (n.ini - t) * pxs;
+    const topo = Math.max(y0, -50), base = Math.min(y1, Y_LINHA);
+    if (base <= topo) continue;
+    const esquerda = ehEsquerda(n);
+    ctx.fillStyle = esquerda ? AZUL : AMARELO;
+    retangulo(c.x + 3, topo, c.w - 6, base - topo, 10); ctx.fill();
+    // nome da nota dentro da barra, quando couber
+    if (base - topo > 46 && c.w > 34) {
+      ctx.fillStyle = esquerda ? '#FFFFFF' : '#1A1600';
+      ctx.font = `700 ${Math.min(28, c.w * 0.42)}px "Segoe UI", -apple-system, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(nome(n.midi), c.x + c.w / 2, base - 12);
+    }
+  }
+
+  // teclado
+  const lb = L / totalBrancas();
+  const soando = m => notas.find(n => n.midi === m && t >= n.ini && t < n.fim);
+  for (let m = faixa.de; m <= faixa.ate; m++) {
+    if (ehPreta(m)) continue;
+    const c = coluna(m), s = soando(m);
+    ctx.fillStyle = s ? (ehEsquerda(s) ? AZUL : AMARELO) : '#F7F6F0';
+    ctx.fillRect(c.x, Y_TECLADO, c.w - 2, ALT_TECLA);
+  }
+  for (let m = faixa.de; m <= faixa.ate; m++) {
+    if (!ehPreta(m)) continue;
+    const c = coluna(m), s = soando(m);
+    ctx.fillStyle = s ? (ehEsquerda(s) ? AZUL_ESC : '#C9BC00') : '#15171C';
+    ctx.fillRect(c.x, Y_TECLADO, c.w, ALT_TECLA * 0.62);
+  }
+  ctx.fillStyle = '#E03A3A'; ctx.fillRect(0, Y_TECLADO - 5, L, 5);
+
+  // Nome em TODAS as brancas, sempre: cinza parada, escuro quando soa. O aluno
+  // acha a tecla mesmo antes de ela acender.
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let m = faixa.de; m <= faixa.ate; m++) {
+    if (ehPreta(m)) continue;
+    const c = coluna(m), s = soando(m);
+    ctx.fillStyle = s ? '#101216' : '#A6A59C';
+    ctx.font = `${s ? 800 : 600} ${Math.min(26, c.w * 0.44)}px "Segoe UI", -apple-system, sans-serif`;
+    ctx.fillText(nome(m), c.x + c.w / 2, Y_TECLADO + ALT_TECLA - 58);
+    if (m % 12 === 0) {   // no dó, a oitava também, pra se localizar
+      ctx.fillStyle = s ? '#2B3038' : '#BFBEB4';
+      ctx.font = `600 ${Math.min(20, c.w * 0.34)}px "Segoe UI", -apple-system, sans-serif`;
+      ctx.fillText('C' + (Math.floor(m / 12) - 1), c.x + c.w / 2, Y_TECLADO + ALT_TECLA - 26);
+    }
+  }
+  // preta só quando soa: é estreita e escura demais pra caber sempre
+  for (const n of notas) {
+    if (t < n.ini || t >= n.fim || !ehPreta(n.midi)) continue;
+    const c = coluna(n.midi);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = `800 ${Math.min(24, c.w * 0.42)}px "Segoe UI", -apple-system, sans-serif`;
+    ctx.fillText(nome(n.midi), c.x + c.w / 2, Y_TECLADO + ALT_TECLA * 0.62 - 24);
+  }
+
+  // retângulos do professor
+  const base = Y_TECLADO + ALT_TECLA + 90;
+  const lg = rotulo('Esquerda', 46, base, AZUL_ESC, '#fff');
+  ctx.font = 'italic 800 46px Montserrat, "Segoe UI", -apple-system, sans-serif';
+  const ld = ctx.measureText('Direita').width + 76;
+  rotulo('Direita', L - 46 - ld, base, AMARELO, '#000');
+  const dE = ativa(deixas.deixasE, t), dD = ativa(deixas.deixasD, t);
+  if (dE) pilula(dE.texto, base + 118, AZUL_ESC, '#fff', 56);
+  if (dD) pilula(dD.texto, base + 118 + 110, AMARELO, '#000', 56);
+}
+
+/* ------------------------------------------------------------- execução --- */
+let tocando = false, cabeca = 0, ultimoMs = 0, velocidade = 1, somLigado = true;
+let audio = null, agendadas = new Set();
+
+function tocarNota(midi, dur) {
+  if (!somLigado) return;
+  if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+  const f = 440 * Math.pow(2, (midi - 69) / 12);
+  const o = audio.createOscillator(), g = audio.createGain();
+  o.type = 'triangle'; o.frequency.value = f;
+  const agora = audio.currentTime, d = Math.min(Math.max(dur, 0.15), 2.2);
+  g.gain.setValueAtTime(0, agora);
+  g.gain.linearRampToValueAtTime(0.16, agora + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, agora + d);
+  o.connect(g); g.connect(audio.destination); o.start(agora); o.stop(agora + d + 0.05);
+}
+
+function laco(ms) {
+  if (tocando) {
+    const dt = Math.min((ms - ultimoMs) / 1000, 0.1);
+    const antes = cabeca;
+    cabeca += dt * velocidade;
+    for (let i = 0; i < notas.length; i++) {
+      const n = notas[i];
+      if (n.ini > antes && n.ini <= cabeca && !agendadas.has(i)) { agendadas.add(i); tocarNota(n.midi, (n.fim - n.ini) / velocidade); }
+    }
+    const fim = notas.length ? Math.max(...notas.map(n => n.fim)) : 0;
+    if (cabeca > fim) { cabeca = fim; tocando = false; document.getElementById('tocar').textContent = 'Tocar'; }
+  }
+  ultimoMs = ms;
+  if (notas.length) {
+    desenhar(cabeca);
+    const s = Math.max(0, cabeca), fim = Math.max(...notas.map(n => n.fim));
+    document.getElementById('relogio').textContent =
+      `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')},${String(Math.floor(s % 1 * 10))}`;
+    const barra = document.getElementById('barra');
+    if (document.activeElement !== barra) barra.value = fim ? s / fim : 0;
+  } else desenhar(0);
+  requestAnimationFrame(laco);
+}
+requestAnimationFrame(laco);
+
+/* -------------------------------------------------------------- saídas --- */
+const tc = s => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(Math.floor(x)).padStart(2,'0')},${String(Math.round(x % 1 * 1000)).padStart(3,'0')}`; };
+
+function baixar(nome, texto, tipo) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([texto], {type: tipo}));
+  a.download = nome; a.click(); URL.revokeObjectURL(a.href);
+}
+const paraSrt = lista => lista.map((d, i) => `${i + 1}\n${tc(d.ini)} --> ${tc(d.fim)}\n${d.texto}\n`).join('\n');
+
+/* -------------------------------------------------------------- interface --- */
+const $ = id => document.getElementById(id);
+
+function recalcular() {
+  deixas = montarDeixas(notas, divisao, maximo, modo, cortarNaFrase);
+  $('split').disabled = trilhaEsquerda !== null;
+  $('rotSplit').textContent = trilhaEsquerda !== null
+    ? 'pelas trilhas do arquivo'
+    : `${nomeOit(divisao)} pra cima = direita`;
+  const tab = $('tabela');
+  const totalDir = deixas.dir.length, totalEsq = deixas.esq.length;
+  tab.innerHTML = `
+    <tr><td><span class="pino" style="background:${AZUL_ESC}"></span>Esquerda</td><td>${totalEsq} notas</td></tr>
+    <tr><td><span class="pino" style="background:${AMARELO}"></span>Direita</td><td>${totalDir} notas</td></tr>
+    <tr><td>Total</td><td>${notas.length} notas</td></tr>
+    <tr><td>Duração</td><td>${(notas.length ? Math.max(...notas.map(n => n.fim)) : 0).toFixed(1)}s</td></tr>`;
+}
+
+function aplicar(lista, nomeArq) {
+  notas = lista;
+  trilhaEsquerda = detectarTrilhas(notas);
+  divisao = divisaoAutomatica(notas);
+  $('split').value = divisao;
+  calcularFaixa(); recalcular();
+  cabeca = 0; agendadas.clear(); tocando = false;
+  for (const b of ['tocar','voltar','passoT','passoF']) $(b).disabled = false;
+  $('barra').disabled = false;
+  $('tocar').textContent = 'Tocar';
+  $('ajustes').style.display = ''; $('resumo').style.display = '';
+  document.title = nomeArq + ' — Notas por mão';
+}
+
+const aviso = txt => { const p = $('estado'); p.style.display = txt ? '' : 'none'; p.textContent = txt || ''; };
+
+async function receber(f) {
+  if (!f) return;
+  const ehVideo = /\.(webm|mp4|mov|m4v)$/i.test(f.name);
+  try {
+    if (ehVideo) {
+      aviso('Lendo o vídeo… ele toca uma vez inteiro pra eu ver cada quadro.');
+      const r = await lerVideoSynthesia(f, p => aviso(`Lendo o vídeo… ${Math.round(p * 100)}%`));
+      if (!r.notas.length) throw new Error('não achei nenhuma tecla acesa — esse vídeo é do Synthesia?');
+      aplicar(r.notas, f.name);
+      aviso(`Pronto: ${r.notas.length} notas lidas do vídeo — ${r.teclas} teclas reconhecidas`
+        + `, ${(r.confianca * 100).toFixed(0)}% de confiança no teclado`
+        + (r.porBusca ? ', lido quadro a quadro (modo lento).' : `, ${r.fps.toFixed(1)} quadros por segundo.`));
+    } else {
+      const lista = lerMidi(await f.arrayBuffer());
+      if (!lista.length) throw new Error('o arquivo não tem nenhuma nota');
+      aplicar(lista, f.name);
+      aviso(`Pronto: ${lista.length} notas lidas do MIDI.`);
+    }
+  } catch (e) {
+    aviso('');
+    alert('Não consegui ler: ' + e.message);
+  }
+}
+
+$('entrada').addEventListener('change', e => receber(e.target.files[0]));
+const alvo = $('alvo');
+['dragenter','dragover'].forEach(t => alvo.addEventListener(t, e => { e.preventDefault(); alvo.classList.add('sobre'); }));
+['dragleave','drop'].forEach(t => alvo.addEventListener(t, e => { e.preventDefault(); alvo.classList.remove('sobre'); }));
+alvo.addEventListener('drop', e => receber(e.dataTransfer.files[0]));
+
+const duracao = () => notas.length ? Math.max(...notas.map(n => n.fim)) : 0;
+function irPara(t) { cabeca = Math.max(0, Math.min(t, duracao())); agendadas.clear(); }
+
+function alternar() {
+  if (!notas.length) return;
+  if (cabeca >= duracao()) irPara(0);
+  tocando = !tocando;
+  if (tocando && audio && audio.state === 'suspended') audio.resume();
+  $('tocar').textContent = tocando ? 'Pausar' : 'Tocar';
+}
+$('tocar').addEventListener('click', alternar);
+$('voltar').addEventListener('click', () => irPara(0));
+$('passoT').addEventListener('click', () => { tocando = false; $('tocar').textContent = 'Tocar'; irPara(cabeca - 1 / 30); });
+$('passoF').addEventListener('click', () => { tocando = false; $('tocar').textContent = 'Tocar'; irPara(cabeca + 1 / 30); });
+$('barra').addEventListener('input', e => irPara(+e.target.value * duracao()));
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+  if (e.code === 'Space') { e.preventDefault(); alternar(); }
+  if (e.code === 'ArrowLeft')  { e.preventDefault(); tocando = false; $('tocar').textContent = 'Tocar'; irPara(cabeca - 1 / 30); }
+  if (e.code === 'ArrowRight') { e.preventDefault(); tocando = false; $('tocar').textContent = 'Tocar'; irPara(cabeca + 1 / 30); }
+});
+function trocarModo(m) {
+  modo = m;
+  $('modo1').className = m === 'nota' ? 'principal' : '';
+  $('modo2').className = m === 'grupo' ? 'principal' : '';
+  if (notas.length) recalcular();
+}
+$('corte').addEventListener('click', () => {
+  cortarNaFrase = !cortarNaFrase;
+  $('corte').textContent = 'Cortar na virada da frase: ' + (cortarNaFrase ? 'sim' : 'não');
+  if (notas.length) recalcular();
+});
+$('modo1').addEventListener('click', () => trocarModo('nota'));
+$('modo2').addEventListener('click', () => trocarModo('grupo'));
+$('split').addEventListener('input', e => { divisao = +e.target.value; recalcular(); });
+$('max').addEventListener('input', e => { maximo = +e.target.value; $('rotMax').textContent = maximo; recalcular(); });
+$('vel').addEventListener('input', e => { velocidade = +e.target.value; $('rotVel').textContent = velocidade.toFixed(2).replace('.', ',') + 'x'; });
+$('queda').addEventListener('input', e => { queda = +e.target.value; $('rotQueda').textContent = queda.toFixed(1).replace('.', ',') + 's'; });
+$('som').addEventListener('click', () => { somLigado = !somLigado; $('som').textContent = 'Som: ' + (somLigado ? 'ligado' : 'desligado'); });
+
+/* Grava o palco enquanto ele toca. Tem que ser em tempo real: o MediaRecorder
+   carimba os quadros pelo relógio, então correr mais rápido sairia acelerado. */
+async function gravarVideo() {
+  const tipos = [
+    ['video/mp4;codecs=avc1.42E01E', 'mp4'],
+    ['video/mp4', 'mp4'],
+    ['video/webm;codecs=vp9', 'webm'],
+    ['video/webm', 'webm'],
+  ];
+  const achado = tipos.find(([t]) => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+  if (!achado) { alert('Esse navegador não sabe gravar vídeo.'); return; }
+  const [mime, ext] = achado;
+
+  // O navegador congela a animação de aba escondida, e aí a gravação sai
+  // truncada sem avisar. Melhor barrar na entrada e vigiar durante.
+  if (document.hidden) { alert('Deixa esta aba na frente pra gravar — o navegador congela a tela de aba escondida.'); return; }
+
+  const botao = $('baixarV'), av = $('avisoV');
+  const somAntes = somLigado;
+  const fim = duracao();
+  let fluxo, escondeu = false;
+  const vigia = () => { if (document.hidden) escondeu = true; };
+  document.addEventListener('visibilitychange', vigia);
+  try {
+    botao.disabled = true; somLigado = false;
+    fluxo = tela.captureStream(30);
+    const gravador = new MediaRecorder(fluxo, {mimeType: mime, videoBitsPerSecond: 12000000});
+    const pedacos = [];
+    gravador.ondataavailable = e => { if (e.data.size) pedacos.push(e.data); };
+
+    irPara(0);
+    const relogio0 = performance.now();
+    gravador.start();
+    tocando = true; $('tocar').textContent = 'Pausar';
+
+    await new Promise(ok => {
+      const olho = setInterval(() => {
+        av.textContent = `gravando… ${Math.round(Math.min(cabeca / fim, 1) * 100)}%`;
+        if (escondeu || !tocando || cabeca >= fim) { clearInterval(olho); ok(); }
+      }, 200);
+    });
+    const decorrido = (performance.now() - relogio0) / 1000;
+    await new Promise(ok => { gravador.onstop = ok; gravador.stop(); });
+
+    if (escondeu) throw new Error('a aba saiu da frente no meio e a gravação travou. Tenta de novo sem trocar de aba.');
+    // se demorou muito mais que a música, o navegador engasgou e o vídeo saiu torto
+    if (decorrido > fim * 1.3 + 2) throw new Error(`o navegador engasgou (levou ${decorrido.toFixed(0)}s pra gravar ${fim.toFixed(0)}s). Fecha outras abas e tenta de novo.`);
+
+    baixar(`notas-por-mao.${ext}`, new Blob(pedacos, {type: mime}), mime);
+    av.textContent = ext === 'mp4' ? 'pronto' : 'saiu .webm — esse navegador não grava mp4';
+  } catch (e) {
+    av.textContent = '';
+    alert('Não consegui gravar: ' + e.message);
+  } finally {
+    document.removeEventListener('visibilitychange', vigia);
+    if (fluxo) fluxo.getTracks().forEach(t => t.stop());
+    somLigado = somAntes; botao.disabled = false;
+    tocando = false; $('tocar').textContent = 'Tocar';
+  }
+}
+$('baixarV').addEventListener('click', gravarVideo);
+
+$('baixarE').addEventListener('click', () => baixar('mao-esquerda.srt', paraSrt(deixas.deixasE), 'text/plain'));
+$('baixarD').addEventListener('click', () => baixar('mao-direita.srt', paraSrt(deixas.deixasD), 'text/plain'));
+$('baixarC').addEventListener('click', () => {
+  const linhas = ['inicio_s,fim_s,duracao_s,mao,nota,nota_com_oitava,midi'];
+  for (const n of notas) linhas.push([n.ini.toFixed(2), n.fim.toFixed(2), (n.fim - n.ini).toFixed(2),
+    ehEsquerda(n) ? 'esquerda' : 'direita', nome(n.midi), nomeOit(n.midi), n.midi].join(','));
+  baixar('notas.csv', '﻿' + linhas.join('\n'), 'text/csv');
+});
+</script>
+</body>
+</html>
